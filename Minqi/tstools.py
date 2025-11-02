@@ -1,5 +1,9 @@
 import pandas as pd
+import numpy as np
 from statsmodels.tsa.stattools import adfuller
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.base import clone
+from sklearn.metrics import root_mean_squared_error
 
 class TimeSeriesStationarizer:
     def __init__(self, df, window=12, signif=0.05):
@@ -50,10 +54,82 @@ class TimeSeriesStationarizer:
         
         return self.df_stationary
 
-# -----------------------------
-# Example usage
-# -----------------------------
-# df = pd.read_csv("your_timeseries.csv", index_col=0, parse_dates=True)
-# ts_stationarizer = TimeSeriesStationarizer(df, window=12)
-# df_stationary = ts_stationarizer.fit_transform()
-# print(ts_stationarizer.results)
+    # -----------------------------
+    # Example usage
+    # -----------------------------
+    # df = pd.read_csv("your_timeseries.csv", index_col=0, parse_dates=True)
+    # ts_stationarizer = TimeSeriesStationarizer(df, window=12)
+    # df_stationary = ts_stationarizer.fit_transform()
+    # print(ts_stationarizer.results)
+
+
+
+
+class WalkForwardCV:
+    """
+    Simple walk-forward cross-validation using sklearn's TimeSeriesSplit.
+
+    Parameters
+    ----------
+    model : sklearn estimator
+        Must have fit() and predict() methods.
+    n_splits : int
+        Number of folds.
+    scoring : callable, optional
+        Custom scoring function (y_true, y_pred) -> float.
+    gap : int, default=0
+        Number of samples to exclude between train and test to prevent leakage.
+    """
+
+    def __init__(self, model, n_splits=5, scoring=None, gap=0):
+        self.model = model
+        self.n_splits = n_splits
+        self.scoring = scoring or (lambda y_true, y_pred: root_mean_squared_error(y_true, y_pred))
+        self.gap = gap
+
+    def evaluate(self, X, y, verbose=True):
+        """Perform walk-forward CV and return fold scores.
+        Parameters
+        ----------
+         X : pandas.DataFrame or numpy.ndarray
+            Feature matrix (time-ordered, not shuffled).
+            Shape: (n_samples, n_features)
+            Must be aligned with `y`.
+
+        y : pandas.Series, numpy.ndarray, or list-like
+            Target variable corresponding to X.
+            Shape: (n_samples,)
+        """
+        
+        
+        tscv = TimeSeriesSplit(n_splits=self.n_splits, gap=self.gap)
+        scores = []
+
+        for fold, (train_idx, test_idx) in enumerate(tscv.split(X)):
+            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+
+            model = clone(self.model)
+            model.fit(X_train, y_train)
+            preds = model.predict(X_test)
+
+            score = self.scoring(y_test, preds)
+            scores.append(score)
+
+            if verbose:
+                print(f"Fold {fold+1}: {score:.4f}")
+
+        print(f"Average score: {np.mean(scores):.4f}")
+        return scores
+    
+    # Example usage:
+    # X = np.random.randn(1000, 10)
+    # y = np.random.randn(1000)
+
+    # # Custom metric: Spearman correlation
+    # def spearman_corr(y_true, y_pred):
+    #     return spearmanr(y_true, y_pred).correlation
+
+    # # Instantiate and run
+    # cv = WalkForwardCV(model=RandomForestRegressor(), n_splits=5, scoring=spearman_corr)
+    # scores = cv.evaluate(X, y)
