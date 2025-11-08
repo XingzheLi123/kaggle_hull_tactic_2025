@@ -1,0 +1,1 @@
+- modify WalkForwardCV to allow it compatible with multi-model
