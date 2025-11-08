@@ -100,8 +100,7 @@ class WalkForwardCV:
             Target variable corresponding to X.
             Shape: (n_samples,)
         """
-        
-        
+         
         tscv = TimeSeriesSplit(n_splits=self.n_splits, gap=self.gap)
         scores = []
 
