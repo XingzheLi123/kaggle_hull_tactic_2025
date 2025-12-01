@@ -64,71 +64,87 @@ class TimeSeriesStationarizer:
 
 
 
-
-class WalkForwardCV:
+from sklearn.decomposition import KernelPCA
+class FeatureEnricher:
     """
-    Simple walk-forward cross-validation using sklearn's TimeSeriesSplit.
-
-    Parameters
-    ----------
-    model : sklearn estimator
-        Must have fit() and predict() methods.
-    n_splits : int
-        Number of folds.
-    scoring : callable, optional
-        Custom scoring function (y_true, y_pred) -> float.
-    gap : int, default=0
-        Number of samples to exclude between train and test to prevent leakage.
+    Enriches time series data with lags, rolling stats, time-based features, and transformations.
     """
-
-    def __init__(self, model, n_splits=5, scoring=None, gap=0):
-        self.model = model
-        self.n_splits = n_splits
-        self.scoring = scoring or (lambda y_true, y_pred: root_mean_squared_error(y_true, y_pred))
-        self.gap = gap
-
-    def evaluate(self, X, y, verbose=True):
-        """Perform walk-forward CV and return fold scores.
+    def __init__(self, 
+                 lags=[1, 2, 5, 10], 
+                 rolling_windows=[5, 10, 20], 
+                 add_lags=True,
+                 add_rolling=True,
+                 add_diff=False,
+                 add_pct_change=False):
+        """
         Parameters
         ----------
-         X : pandas.DataFrame or numpy.ndarray
-            Feature matrix (time-ordered, not shuffled).
-            Shape: (n_samples, n_features)
-            Must be aligned with `y`.
-
-        y : pandas.Series, numpy.ndarray, or list-like
-            Target variable corresponding to X.
-            Shape: (n_samples,)
+        lags : list[int]
+            List of lag periods to include.
+        rolling_windows : list[int]
+            List of window sizes for rolling statistics.
+        use_cyclical_time : bool
+            Whether to add cyclical time features (sin/cos of day/month).
+        add_diff : bool
+            Whether to include first differences.
+        add_pct_change : bool
+            Whether to include percent change.
         """
-         
-        tscv = TimeSeriesSplit(n_splits=self.n_splits, gap=self.gap)
-        scores = []
-
-        for fold, (train_idx, test_idx) in enumerate(tscv.split(X)):
-            X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-            y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-
-            model = clone(self.model)
-            model.fit(X_train, y_train)
-            preds = model.predict(X_test)
-
-            score = self.scoring(y_test, preds)
-            scores.append(score)
-
-            if verbose:
-                print(f"Fold {fold+1}: {score:.4f}")
-
-        print(f"Average score: {np.mean(scores):.4f}")
-        return scores
+        self.lags = lags
+        self.rolling_windows = rolling_windows
+        self.add_lags = add_lags
+        self.add_rolling = add_rolling
+        self.add_diff = add_diff
+        self.add_pct_change = add_pct_change
+    def add_lags_features(self, df, col):
+        """
+        col : list[str]
+        """
+        lag_features = {
+            f"{col}_lag{lag}": df[col].shift(lag)
+            for lag in self.lags
+        }
+        return pd.DataFrame(lag_features, index=df.index)
     
-    # Example usage:
-    # X = np.random.randn(1000, 10)
-    # y = np.random.randn(1000)
+    def add_rolling_features(self, df, col):
+        roll_features = {}
+        for w in self.rolling_windows:
+            roll_features[f"{col}_roll_mean_{w}"] = df[col].rolling(w).mean()
+            roll_features[f"{col}_roll_std_{w}"] = df[col].rolling(w).std()
+        return pd.DataFrame(roll_features, index=df.index)
+    
+    def add_differences_features(self, df, col):
+        diff_features = {}
+        if self.add_diff:
+            diff_features[f"{col}_diff1"] = df[col].diff(1)
+        if self.add_pct_change:
+            diff_features[f"{col}_pctchg"] = df[col].pct_change()
+        return pd.DataFrame(diff_features, index=df.index)
+    
+    def transform(self, df, target_cols):
+        """
+        target_cols : list[str]
+            Feature columns to enrich
+        """
+        df = df.copy()
+        feature_frames = [df[target_cols]]
+        for col in target_cols:
+            if self.add_lags:
+                feature_frames.append(self.add_lags_features(df, col))
+            if self.add_rolling:
+                feature_frames.append(self.add_rolling_features(df, col))
+            feature_frames.append(self.add_differences_features(df, col))
+            
+        result = pd.concat(feature_frames, axis=1)
+        # Drop rows with NaNs introduced by shifting/rolling
+        result = result.dropna()
+        return result
+    
+    # -----------------------------
+    # Example usage
+    # -----------------------------
+    # df = pd.read_csv("your_timeseries.csv")
+    # ts_enricher = FeatureEnricher(add_diff=True, add_pct_change=True)
+    # train_df_enriched = ts_enricher.transform(train_df, standard_features)
+    
 
-    # # Custom metric: Spearman correlation
-    # def spearman_corr(y_true, y_pred):
-    #     return spearmanr(y_true, y_pred).correlation
-
-    # # Instantiate and run
-    # cv = WalkForwardCV(model=RandomForestRegressor(), n_splits=5, scoring=spearman_corr)
-    # scores = cv.evaluate(X, y)

@@ -3,4 +3,9 @@
 offline/
 =======
 .venv/.DS_Store
+<<<<<<< HEAD
 >>>>>>> 35d59c98215ecdb44390a46020bc3822aaa7448a
+=======
+Minqi/train_enriched.csv
+Minqi/train_enriched.csv
+>>>>>>> 762c5bc2589a3ff6a9c61b0cf13efecd34e421cc

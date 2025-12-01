@@ -1,1 +1,14 @@
+- pick out a best feature selection method of each model (linear (ridge), tree-based (random forest/Extratree), XGboost/lightGBM)
+
+- Feature selection / engineering redesign
+
+- may try create momentum features myself (target.shift(1,5)) [done]
+
 - modify WalkForwardCV to allow it compatible with multi-model
+
+- standardization
+
+- feature generations
+
+- PCA
+
